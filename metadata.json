@@ -1,0 +1,8 @@
+{
+  "uuid": "voxtype-osd@voxtype.io",
+  "name": "Voxtype OSD",
+  "description": "GNOME Shell on-screen waveform for Voxtype recording sessions.",
+  "shell-version": ["45", "46", "47", "48"],
+  "url": "https://github.com/Adamkadaban/voxtype-osd-gnome-shell",
+  "version": 1
+}

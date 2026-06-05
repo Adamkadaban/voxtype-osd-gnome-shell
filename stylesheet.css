@@ -1,0 +1,36 @@
+.voxtype-osd-box {
+  border-radius: 18px;
+  background-color: rgba(16, 18, 24, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.42);
+  padding: 10px 14px;
+  spacing: 6px;
+}
+
+.voxtype-osd-header {
+  spacing: 8px;
+}
+
+.voxtype-osd-title {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+}
+
+.voxtype-osd-status {
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 10px;
+}
+
+.voxtype-osd-waveform {
+  height: 30px;
+}
+
+.voxtype-osd-bar {
+  width: 4px;
+  border-radius: 3px;
+  background-color: rgba(102, 217, 239, 0.9);
+  margin-left: 2px;
+  margin-right: 2px;
+}
