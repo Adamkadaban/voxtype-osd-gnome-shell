@@ -13,10 +13,13 @@ const RECONNECT_MS = 1000;
 const IDLE_HIDE_MS = 180;
 const MIN_BAR_HEIGHT = 3;
 const MAX_BAR_HEIGHT = 30;
+const DEFAULT_MAX_DURATION_SECS = 60;
+const WARNING_MAX_SECS = 60;
+const WARNING_RATIO = 0.1;
 
 const VoxtypeOsd = GObject.registerClass(
   class VoxtypeOsd extends St.BoxLayout {
-    _init() {
+    _init(maxDurationSecs) {
       super._init({
         style_class: "voxtype-osd-box",
         reactive: false,
@@ -26,6 +29,9 @@ const VoxtypeOsd = GObject.registerClass(
 
       this._levels = new Array(BAR_COUNT).fill(0);
       this._lastFrameUs = 0;
+      this._recordingStartedUs = 0;
+      this._warning = false;
+      this._maxDurationSecs = maxDurationSecs;
 
       const header = new St.BoxLayout({
         style_class: "voxtype-osd-header",
@@ -71,9 +77,14 @@ const VoxtypeOsd = GObject.registerClass(
     }
 
     pushFrame(frame) {
-      this._lastFrameUs = GLib.get_monotonic_time();
+      const nowUs = GLib.get_monotonic_time();
+
+      if (!this._recordingStartedUs) this._recordingStartedUs = nowUs;
+
+      this._lastFrameUs = nowUs;
       this._levels.shift();
       this._levels.push(frame.peak);
+      this._updateTimeout(nowUs);
       this._render();
       this.show();
     }
@@ -81,16 +92,74 @@ const VoxtypeOsd = GObject.registerClass(
     updateIdle(nowUs) {
       if (!this.visible) return;
 
-      if ((nowUs - this._lastFrameUs) / 1000 > IDLE_HIDE_MS) this.hide();
+      if ((nowUs - this._lastFrameUs) / 1000 > IDLE_HIDE_MS) {
+        this._recordingStartedUs = 0;
+        this._setWarning(false);
+        this._status.set_text("recording");
+        this.hide();
+        return;
+      }
+
+      this._updateTimeout(nowUs);
     }
 
     setDisconnected() {
+      this._recordingStartedUs = 0;
+      this._setWarning(false);
       this._status.set_text("waiting");
       this.hide();
     }
 
     setConnected() {
+      this._recordingStartedUs = 0;
+      this._setWarning(false);
       this._status.set_text("recording");
+    }
+
+    setMaxDurationSecs(maxDurationSecs) {
+      this._maxDurationSecs = maxDurationSecs;
+    }
+
+    _updateTimeout(nowUs) {
+      if (!this._recordingStartedUs || !this._maxDurationSecs) return;
+
+      const elapsedSecs = (nowUs - this._recordingStartedUs) / 1000000;
+      const remainingSecs = Math.max(
+        0,
+        Math.ceil(this._maxDurationSecs - elapsedSecs),
+      );
+      const warningSecs = Math.max(
+        1,
+        Math.min(WARNING_MAX_SECS, Math.ceil(this._maxDurationSecs * WARNING_RATIO)),
+      );
+
+      if (remainingSecs <= warningSecs) {
+        this._setWarning(true);
+        this._status.set_text(`timeout ${this._formatRemaining(remainingSecs)}`);
+      } else {
+        this._setWarning(false);
+        this._status.set_text("recording");
+      }
+    }
+
+    _formatRemaining(seconds) {
+      if (seconds >= 60) {
+        const minutes = Math.floor(seconds / 60);
+        const remainder = String(seconds % 60).padStart(2, "0");
+        return `${minutes}:${remainder}`;
+      }
+
+      return `${seconds}s`;
+    }
+
+    _setWarning(enabled) {
+      if (this._warning === enabled) return;
+
+      this._warning = enabled;
+      const method = enabled ? "add_style_class_name" : "remove_style_class_name";
+      this[method]("voxtype-osd-box-warning");
+      this._status[method]("voxtype-osd-status-warning");
+      for (const bar of this._bars) bar[method]("voxtype-osd-bar-warning");
     }
 
     _render() {
@@ -119,7 +188,7 @@ export default class VoxtypeOsdExtension extends Extension {
     this._readBuffer = new Uint8Array(FRAME_BYTES);
     this._readOffset = 0;
 
-    this._osd = new VoxtypeOsd();
+    this._osd = new VoxtypeOsd(this._readMaxDurationSecs());
     Main.layoutManager.addTopChrome(this._osd, { affectsStruts: false });
     this._positionOsd();
 
@@ -178,6 +247,7 @@ export default class VoxtypeOsdExtension extends Extension {
         const connection = source.connect_finish(result);
         this._stream = connection.get_input_stream();
         this._readOffset = 0;
+        this._osd.setMaxDurationSecs(this._readMaxDurationSecs());
         this._osd.setConnected();
         this._readNextChunk();
       } catch (_) {
@@ -263,5 +333,50 @@ export default class VoxtypeOsdExtension extends Extension {
     const peakFromDb = peakDbfs <= -120 ? 0 : Math.pow(10, peakDbfs / 20);
 
     return { peak: Math.max(peakFromSamples, peakFromDb) };
+  }
+
+  _readMaxDurationSecs() {
+    const configHome =
+      GLib.getenv("XDG_CONFIG_HOME") ??
+      GLib.build_filenamev([GLib.get_home_dir(), ".config"]);
+    const configPath = GLib.build_filenamev([
+      configHome,
+      "voxtype",
+      "config.toml",
+    ]);
+
+    try {
+      const [ok, contents] = GLib.file_get_contents(configPath);
+      if (!ok) return DEFAULT_MAX_DURATION_SECS;
+
+      return this._parseMaxDurationSecs(new TextDecoder().decode(contents));
+    } catch (_) {
+      return DEFAULT_MAX_DURATION_SECS;
+    }
+  }
+
+  _parseMaxDurationSecs(configText) {
+    let inAudioSection = false;
+
+    for (const rawLine of configText.split(/\r?\n/)) {
+      const line = rawLine.replace(/#.*/, "").trim();
+      if (!line) continue;
+
+      const section = line.match(/^\[([^\]]+)\]$/);
+      if (section) {
+        inAudioSection = section[1].trim() === "audio";
+        continue;
+      }
+
+      if (!inAudioSection) continue;
+
+      const value = line.match(/^max_duration_secs\s*=\s*(\d+)\s*$/);
+      if (!value) continue;
+
+      const seconds = Number.parseInt(value[1], 10);
+      if (Number.isFinite(seconds) && seconds > 0) return seconds;
+    }
+
+    return DEFAULT_MAX_DURATION_SECS;
   }
 }

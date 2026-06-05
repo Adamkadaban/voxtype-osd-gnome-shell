@@ -5,6 +5,13 @@
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.42);
   padding: 10px 14px;
   spacing: 6px;
+  transition-duration: 5000ms;
+}
+
+.voxtype-osd-box-warning {
+  background-color: rgba(48, 32, 10, 0.92);
+  border-color: rgba(255, 177, 66, 0.86);
+  box-shadow: 0 10px 34px rgba(255, 122, 0, 0.30);
 }
 
 .voxtype-osd-header {
@@ -21,6 +28,12 @@
 .voxtype-osd-status {
   color: rgba(255, 255, 255, 0.56);
   font-size: 10px;
+  transition-duration: 5000ms;
+}
+
+.voxtype-osd-status-warning {
+  color: rgba(255, 209, 102, 0.95);
+  font-weight: 700;
 }
 
 .voxtype-osd-waveform {
@@ -33,4 +46,9 @@
   background-color: rgba(102, 217, 239, 0.9);
   margin-left: 2px;
   margin-right: 2px;
+  transition-duration: 5000ms;
+}
+
+.voxtype-osd-bar-warning {
+  background-color: rgba(255, 177, 66, 0.96);
 }
