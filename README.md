@@ -1,8 +1,9 @@
 # Voxtype OSD for GNOME Shell
 
-A small GNOME Shell extension that shows a waveform while Voxtype dictation is
-recording. The OSD turns amber and shows a timeout countdown during the final
-minute, or the final 10% of `[audio].max_duration_secs` if that is shorter.
+A small GNOME Shell extension that shows a waveform while
+[Voxtype](https://github.com/peteonrails/voxtype) dictation is recording. The
+OSD turns amber and shows a timeout countdown during the final minute, or the
+final 10% of `[audio].max_duration_secs` if that is shorter.
 
 This is an unofficial integration for Voxtype. Voxtype must be installed and
 running separately.
@@ -41,17 +42,6 @@ Voxtype OSD can remain disabled.
 
 The timeout warning reads `~/.config/voxtype/config.toml` and falls back to
 Voxtype's default 60 second recording limit if the config cannot be read.
-
-## Publishing
-
-Build the upload ZIP with the runtime files and license:
-
-```sh
-gnome-extensions pack . --force --extra-source=LICENSE
-```
-
-Upload `voxtype-osd@adamkadaban.github.io.shell-extension.zip` to
-https://extensions.gnome.org/upload/.
 
 ## License
 
