@@ -7,7 +7,7 @@
       <description>Shortcut that toggles regular Voxtype push-to-talk dictation.</description>
     </key>
     <key name="cancel-dictation" type="as">
-      <default>['&lt;Shift&gt;&lt;Super&gt;Escape']</default>
+      <default>['&lt;Super&gt;c']</default>
       <summary>Cancel Voxtype dictation</summary>
       <description>Shortcut that cancels the current Voxtype recording or transcription.</description>
     </key>
@@ -17,7 +17,7 @@
       <description>Shortcut that starts or stops Voxtype meeting mode.</description>
     </key>
     <key name="pause-resume-meeting" type="as">
-      <default>['&lt;Alt&gt;&lt;Super&gt;h']</default>
+      <default>['&lt;Control&gt;&lt;Super&gt;h']</default>
       <summary>Pause or resume Voxtype meeting mode</summary>
       <description>Shortcut that pauses or resumes the current Voxtype meeting.</description>
     </key>
