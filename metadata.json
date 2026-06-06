@@ -1,10 +1,8 @@
 {
   "uuid": "voxtype-osd@adamkadaban.github.io",
   "name": "Voxtype OSD",
-  "description": "GNOME Shell on-screen waveform for Voxtype recording sessions.",
-  "session-modes": ["user", "unlock-dialog"],
+  "description": "GNOME Shell on-screen waveform, shortcuts, and meeting status for Voxtype. Requires Voxtype to be installed separately.",
   "shell-version": ["45", "46", "47", "48"],
   "settings-schema": "org.gnome.shell.extensions.voxtype-osd",
-  "url": "https://github.com/Adamkadaban/voxtype-osd-gnome-shell",
-  "version": 1
+  "url": "https://github.com/Adamkadaban/voxtype-osd-gnome-shell"
 }
