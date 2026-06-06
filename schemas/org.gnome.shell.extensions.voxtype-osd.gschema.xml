@@ -7,7 +7,7 @@
       <description>Shortcut that toggles regular Voxtype push-to-talk dictation.</description>
     </key>
     <key name="cancel-dictation" type="as">
-      <default>['&lt;Super&gt;Escape']</default>
+      <default>['&lt;Shift&gt;&lt;Super&gt;Escape']</default>
       <summary>Cancel Voxtype dictation</summary>
       <description>Shortcut that cancels the current Voxtype recording or transcription.</description>
     </key>
