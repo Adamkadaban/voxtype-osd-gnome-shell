@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.voxtype-osd" path="/org/gnome/shell/extensions/voxtype-osd/">
+    <key name="toggle-dictation" type="as">
+      <default>['&lt;Super&gt;h']</default>
+      <summary>Toggle Voxtype dictation</summary>
+      <description>Shortcut that toggles regular Voxtype push-to-talk dictation.</description>
+    </key>
+    <key name="cancel-dictation" type="as">
+      <default>['&lt;Super&gt;Escape']</default>
+      <summary>Cancel Voxtype dictation</summary>
+      <description>Shortcut that cancels the current Voxtype recording or transcription.</description>
+    </key>
+    <key name="toggle-meeting" type="as">
+      <default>['&lt;Shift&gt;&lt;Super&gt;h']</default>
+      <summary>Toggle Voxtype meeting mode</summary>
+      <description>Shortcut that starts or stops Voxtype meeting mode.</description>
+    </key>
+    <key name="pause-resume-meeting" type="as">
+      <default>['&lt;Alt&gt;&lt;Super&gt;h']</default>
+      <summary>Pause or resume Voxtype meeting mode</summary>
+      <description>Shortcut that pauses or resumes the current Voxtype meeting.</description>
+    </key>
+  </schema>
+</schemalist>
