@@ -337,6 +337,7 @@ const MeetingOsd = GObject.registerClass(
 
 export default class VoxtypeOsdExtension extends Extension {
   enable() {
+    this._generation = (this._generation ?? 0) + 1;
     this._settings = this._createSettings();
     this._socketPath = GLib.build_filenamev([
       GLib.getenv("XDG_RUNTIME_DIR") ?? "/tmp",
@@ -374,7 +375,12 @@ export default class VoxtypeOsdExtension extends Extension {
     Main.layoutManager.addTopChrome(this._meetingOsd, { affectsStruts: false });
     this._positionMeetingOsd();
 
+    const generation = this._generation;
     this._idleSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+      if (this._destroyed || generation !== this._generation) {
+        return GLib.SOURCE_REMOVE;
+      }
+
       const nowUs = GLib.get_monotonic_time();
       this._osd.updateIdle(nowUs);
       this._meetingOsd.update(nowUs);
@@ -392,6 +398,7 @@ export default class VoxtypeOsdExtension extends Extension {
 
   disable() {
     this._destroyed = true;
+    this._generation = (this._generation ?? 0) + 1;
 
     if (this._connectSource) {
       GLib.source_remove(this._connectSource);
@@ -468,11 +475,12 @@ export default class VoxtypeOsdExtension extends Extension {
   _connect() {
     if (this._destroyed) return;
 
+    const generation = this._generation;
     const address = Gio.UnixSocketAddress.new(this._socketPath);
     const client = new Gio.SocketClient();
 
     client.connect_async(address, null, (source, result) => {
-      if (this._destroyed) return;
+      if (this._destroyed || generation !== this._generation) return;
 
       try {
         const connection = source.connect_finish(result);
@@ -493,12 +501,15 @@ export default class VoxtypeOsdExtension extends Extension {
   _scheduleReconnect() {
     if (this._destroyed || this._connectSource) return;
 
+    const generation = this._generation;
     this._connectSource = GLib.timeout_add(
       GLib.PRIORITY_DEFAULT,
       RECONNECT_MS,
       () => {
         this._connectSource = 0;
-        if (this._destroyed) return GLib.SOURCE_REMOVE;
+        if (this._destroyed || generation !== this._generation) {
+          return GLib.SOURCE_REMOVE;
+        }
         this._connect();
         return GLib.SOURCE_REMOVE;
       },
@@ -508,13 +519,14 @@ export default class VoxtypeOsdExtension extends Extension {
   _readNextChunk() {
     if (this._destroyed || !this._stream) return;
 
+    const generation = this._generation;
     const remaining = FRAME_BYTES - this._readOffset;
     this._stream.read_bytes_async(
       remaining,
       GLib.PRIORITY_DEFAULT,
       null,
       (source, result) => {
-        if (this._destroyed) return;
+        if (this._destroyed || generation !== this._generation) return;
 
         let bytes;
         try {
@@ -545,12 +557,15 @@ export default class VoxtypeOsdExtension extends Extension {
   }
 
   _disconnectAndReconnect() {
+    if (this._destroyed) return;
+
     if (this._stream) {
       try {
         this._stream.close(null);
       } catch (_) {}
       this._stream = null;
     }
+    if (!this._osd) return;
     this._osd.setDisconnected();
     this._refreshState();
     this._scheduleReconnect();
@@ -694,9 +709,10 @@ export default class VoxtypeOsdExtension extends Extension {
   _debounceStateRefresh() {
     if (this._destroyed || this._stateSource) return;
 
+    const generation = this._generation;
     this._stateSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
       this._stateSource = 0;
-      if (!this._destroyed) this._refreshState();
+      if (!this._destroyed && generation === this._generation) this._refreshState();
       return GLib.SOURCE_REMOVE;
     });
   }
@@ -726,9 +742,10 @@ export default class VoxtypeOsdExtension extends Extension {
   _debounceMeetingStateRefresh() {
     if (this._destroyed || this._meetingStateSource) return;
 
+    const generation = this._generation;
     this._meetingStateSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
       this._meetingStateSource = 0;
-      if (!this._destroyed) this._refreshMeetingState();
+      if (!this._destroyed && generation === this._generation) this._refreshMeetingState();
       return GLib.SOURCE_REMOVE;
     });
   }
@@ -758,9 +775,10 @@ export default class VoxtypeOsdExtension extends Extension {
 
   _loadTextFile(path, callback) {
     const file = Gio.File.new_for_path(path);
+    const generation = this._generation;
     try {
       file.load_contents_async(null, (source, result) => {
-        if (this._destroyed) return;
+        if (this._destroyed || generation !== this._generation) return;
 
         try {
           const [ok, contents] = source.load_contents_finish(result);
