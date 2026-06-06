@@ -359,11 +359,14 @@ export default class VoxtypeOsdExtension extends Extension {
     this._readBuffer = new Uint8Array(FRAME_BYTES);
     this._readOffset = 0;
     this._stateMonitor = null;
+    this._stateMonitorChangedId = 0;
     this._stateSource = 0;
     this._meetingStateMonitor = null;
+    this._meetingStateMonitorChangedId = 0;
     this._meetingStateSource = 0;
+    this._meetingState = { state: "idle", meetingId: "" };
 
-    this._osd = new VoxtypeOsd(this._readMaxDurationSecs());
+    this._osd = new VoxtypeOsd(DEFAULT_MAX_DURATION_SECS);
     Main.layoutManager.addTopChrome(this._osd, { affectsStruts: false });
     this._positionOsd();
 
@@ -381,6 +384,7 @@ export default class VoxtypeOsdExtension extends Extension {
     this._addKeybindings();
     this._watchState();
     this._watchMeetingState();
+    this._refreshMaxDurationSecs();
     this._refreshState();
     this._refreshMeetingState();
     this._connect();
@@ -406,10 +410,18 @@ export default class VoxtypeOsdExtension extends Extension {
       this._meetingStateSource = 0;
     }
     if (this._stateMonitor) {
+      if (this._stateMonitorChangedId) {
+        this._stateMonitor.disconnect(this._stateMonitorChangedId);
+        this._stateMonitorChangedId = 0;
+      }
       this._stateMonitor.cancel();
       this._stateMonitor = null;
     }
     if (this._meetingStateMonitor) {
+      if (this._meetingStateMonitorChangedId) {
+        this._meetingStateMonitor.disconnect(this._meetingStateMonitorChangedId);
+        this._meetingStateMonitorChangedId = 0;
+      }
       this._meetingStateMonitor.cancel();
       this._meetingStateMonitor = null;
     }
@@ -466,7 +478,7 @@ export default class VoxtypeOsdExtension extends Extension {
         const connection = source.connect_finish(result);
         this._stream = connection.get_input_stream();
         this._readOffset = 0;
-        this._osd.setMaxDurationSecs(this._readMaxDurationSecs());
+        this._refreshMaxDurationSecs();
         this._osd.setConnected();
         this._refreshState();
         this._readNextChunk();
@@ -559,7 +571,7 @@ export default class VoxtypeOsdExtension extends Extension {
     return { peak: Math.max(peakFromSamples, peakFromDb) };
   }
 
-  _readMaxDurationSecs() {
+  _refreshMaxDurationSecs() {
     const configHome =
       GLib.getenv("XDG_CONFIG_HOME") ??
       GLib.build_filenamev([GLib.get_home_dir(), ".config"]);
@@ -569,14 +581,14 @@ export default class VoxtypeOsdExtension extends Extension {
       "config.toml",
     ]);
 
-    try {
-      const [ok, contents] = GLib.file_get_contents(configPath);
-      if (!ok) return DEFAULT_MAX_DURATION_SECS;
+    this._loadTextFile(configPath, (contents) => {
+      if (!this._osd) return;
 
-      return this._parseMaxDurationSecs(new TextDecoder().decode(contents));
-    } catch (_) {
-      return DEFAULT_MAX_DURATION_SECS;
-    }
+      const maxDurationSecs = contents
+        ? this._parseMaxDurationSecs(contents)
+        : DEFAULT_MAX_DURATION_SECS;
+      this._osd.setMaxDurationSecs(maxDurationSecs);
+    });
   }
 
   _parseMaxDurationSecs(configText) {
@@ -642,7 +654,7 @@ export default class VoxtypeOsdExtension extends Extension {
   }
 
   _toggleMeeting() {
-    const state = this._readMeetingState().state;
+    const state = this._meetingState.state;
     if (state === "recording" || state === "paused") {
       this._spawn(["voxtype", "meeting", "stop"]);
     } else {
@@ -651,7 +663,7 @@ export default class VoxtypeOsdExtension extends Extension {
   }
 
   _pauseResumeMeeting() {
-    const state = this._readMeetingState().state;
+    const state = this._meetingState.state;
     if (state === "recording") {
       this._spawn(["voxtype", "meeting", "pause"]);
     } else if (state === "paused") {
@@ -671,7 +683,9 @@ export default class VoxtypeOsdExtension extends Extension {
     const file = Gio.File.new_for_path(this._statePath);
     try {
       this._stateMonitor = file.monitor_file(Gio.FileMonitorFlags.NONE, null);
-      this._stateMonitor.connect("changed", () => this._debounceStateRefresh());
+      this._stateMonitorChangedId = this._stateMonitor.connect("changed", () =>
+        this._debounceStateRefresh(),
+      );
     } catch (error) {
       console.error(`Voxtype OSD failed to watch state: ${error}`);
     }
@@ -689,25 +703,21 @@ export default class VoxtypeOsdExtension extends Extension {
 
   _refreshState() {
     if (!this._osd) return;
-    this._osd.setRecordingState(this._readState() === "recording");
-  }
+    this._loadTextFile(this._statePath, (contents) => {
+      if (!this._osd) return;
 
-  _readState() {
-    try {
-      const [ok, contents] = GLib.file_get_contents(this._statePath);
-      if (!ok) return "idle";
-
-      return new TextDecoder().decode(contents).trim() || "idle";
-    } catch (_) {
-      return "idle";
-    }
+      const state = contents?.trim() || "idle";
+      this._osd.setRecordingState(state === "recording");
+    });
   }
 
   _watchMeetingState() {
     const file = Gio.File.new_for_path(this._meetingStatePath);
     try {
       this._meetingStateMonitor = file.monitor_file(Gio.FileMonitorFlags.NONE, null);
-      this._meetingStateMonitor.connect("changed", () => this._debounceMeetingStateRefresh());
+      this._meetingStateMonitorChangedId = this._meetingStateMonitor.connect("changed", () =>
+        this._debounceMeetingStateRefresh(),
+      );
     } catch (error) {
       console.error(`Voxtype OSD failed to watch meeting state: ${error}`);
     }
@@ -725,22 +735,42 @@ export default class VoxtypeOsdExtension extends Extension {
 
   _refreshMeetingState() {
     if (!this._meetingOsd) return;
-    const { state, meetingId } = this._readMeetingState();
-    this._meetingOsd.setMeetingState(state, meetingId);
+    this._loadTextFile(this._meetingStatePath, (contents) => {
+      if (!this._meetingOsd) return;
+
+      this._meetingState = this._parseMeetingState(contents);
+      this._meetingOsd.setMeetingState(
+        this._meetingState.state,
+        this._meetingState.meetingId,
+      );
+    });
   }
 
-  _readMeetingState() {
-    try {
-      const [ok, contents] = GLib.file_get_contents(this._meetingStatePath);
-      if (!ok) return { state: "idle", meetingId: "" };
+  _parseMeetingState(contents) {
+    if (!contents) return { state: "idle", meetingId: "" };
 
-      const lines = new TextDecoder().decode(contents).trim().split(/\r?\n/);
-      return {
-        state: lines[0] || "idle",
-        meetingId: lines[1] || "",
-      };
+    const lines = contents.trim().split(/\r?\n/);
+    return {
+      state: lines[0] || "idle",
+      meetingId: lines[1] || "",
+    };
+  }
+
+  _loadTextFile(path, callback) {
+    const file = Gio.File.new_for_path(path);
+    try {
+      file.load_contents_async(null, (source, result) => {
+        if (this._destroyed) return;
+
+        try {
+          const [ok, contents] = source.load_contents_finish(result);
+          callback(ok ? new TextDecoder().decode(contents) : null);
+        } catch (_) {
+          callback(null);
+        }
+      });
     } catch (_) {
-      return { state: "idle", meetingId: "" };
+      callback(null);
     }
   }
 }
