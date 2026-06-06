@@ -678,12 +678,14 @@ export default class VoxtypeOsdExtension extends Extension {
   }
 
   _pauseResumeMeeting() {
-    const state = this._meetingState.state;
-    if (state === "recording") {
-      this._spawn(["voxtype", "meeting", "pause"]);
-    } else if (state === "paused") {
-      this._spawn(["voxtype", "meeting", "resume"]);
-    }
+    this._loadTextFile(this._meetingStatePath, (contents) => {
+      const { state } = this._parseMeetingState(contents);
+      if (state === "recording") {
+        this._spawn(["voxtype", "meeting", "pause"]);
+      } else if (state === "paused") {
+        this._spawn(["voxtype", "meeting", "resume"]);
+      }
+    });
   }
 
   _spawn(argv) {

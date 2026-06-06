@@ -10,9 +10,9 @@ running separately.
 The extension also owns Voxtype's GNOME shortcuts:
 
 - `Super+H`: toggle dictation
-- `Super+Escape`: cancel dictation
+- `Super+C`: cancel dictation
 - `Super+Shift+H`: start/stop meeting mode
-- `Super+Alt+H`: pause/resume meeting mode
+- `Super+Shift+P`: pause/resume meeting mode
 
 When meeting mode is active, a separate meeting pill appears with elapsed time
 and pause state. Meeting mode is timer-only because Voxtype's meeting capture
