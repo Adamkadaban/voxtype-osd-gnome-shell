@@ -21,5 +21,10 @@
       <summary>Pause or resume Voxtype meeting mode</summary>
       <description>Shortcut that pauses or resumes the current Voxtype meeting.</description>
     </key>
+    <key name="monitor" type="s">
+      <default>'primary'</default>
+      <summary>Monitor for OSD display</summary>
+      <description>Which monitor to show the OSD on. "primary" uses the primary monitor, "active" uses the monitor with the current keyboard focus.</description>
+    </key>
   </schema>
 </schemalist>

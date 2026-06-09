@@ -4,5 +4,6 @@
   "description": "GNOME Shell on-screen waveform, shortcuts, and meeting status for Voxtype. Requires Voxtype to be installed separately.",
   "shell-version": ["45", "46", "47", "48"],
   "settings-schema": "org.gnome.shell.extensions.voxtype-osd",
-  "url": "https://github.com/Adamkadaban/voxtype-osd-gnome-shell"
+  "url": "https://github.com/Adamkadaban/voxtype-osd-gnome-shell",
+  "version-name": "1.1"
 }

@@ -1,12 +1,9 @@
 import Adw from "gi://Adw";
 import Gdk from "gi://Gdk";
-import Gio from "gi://Gio";
 import GObject from "gi://GObject";
 import Gtk from "gi://Gtk";
 
 import { ExtensionPreferences } from "resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js";
-
-const SETTINGS_SCHEMA = "org.gnome.shell.extensions.voxtype-osd";
 
 const SHORTCUTS = [
   {
@@ -131,7 +128,7 @@ const ShortcutRow = GObject.registerClass(
 
 export default class VoxtypeOsdPreferences extends ExtensionPreferences {
   fillPreferencesWindow(window) {
-    const settings = this._createSettings();
+    const settings = this.getSettings();
 
     const page = new Adw.PreferencesPage({
       title: "Voxtype OSD",
@@ -149,18 +146,35 @@ export default class VoxtypeOsdPreferences extends ExtensionPreferences {
     for (const shortcut of SHORTCUTS) {
       group.add(new ShortcutRow(settings, shortcut));
     }
-  }
 
-  _createSettings() {
-    const schemaDir = this.dir.get_child("schemas").get_path();
-    const schemaSource = Gio.SettingsSchemaSource.new_from_directory(
-      schemaDir,
-      Gio.SettingsSchemaSource.get_default(),
-      false,
-    );
-    const schema = schemaSource.lookup(SETTINGS_SCHEMA, false);
-    if (!schema) throw new Error(`Schema ${SETTINGS_SCHEMA} not found`);
+    const displayGroup = new Adw.PreferencesGroup({
+      title: "Display",
+      description: "Choose which monitor the OSD appears on.",
+    });
+    page.add(displayGroup);
 
-    return new Gio.Settings({ settings_schema: schema });
+    const MONITOR_OPTIONS = ["Primary monitor", "Active monitor"];
+    const MONITOR_VALUES = ["primary", "active"];
+
+    const monitorModel = new Gtk.StringList();
+    for (const option of MONITOR_OPTIONS) monitorModel.append(option);
+
+    const monitorRow = new Adw.ComboRow({
+      title: "Monitor",
+      subtitle: "The monitor where the recording and meeting OSD will appear",
+      model: monitorModel,
+    });
+
+    const currentValue = settings.get_string("monitor");
+    const currentIndex = MONITOR_VALUES.indexOf(currentValue);
+    if (currentIndex >= 0) monitorRow.set_selected(currentIndex);
+
+    monitorRow.connect("notify::selected", () => {
+      const index = monitorRow.get_selected();
+      if (index >= 0 && index < MONITOR_VALUES.length)
+        settings.set_string("monitor", MONITOR_VALUES[index]);
+    });
+
+    displayGroup.add(monitorRow);
   }
 }

@@ -18,8 +18,6 @@ const MAX_BAR_HEIGHT = 30;
 const DEFAULT_MAX_DURATION_SECS = 60;
 const WARNING_MAX_SECS = 60;
 const WARNING_RATIO = 0.1;
-const SETTINGS_SCHEMA = "org.gnome.shell.extensions.voxtype-osd";
-
 const KEYBINDINGS = [
   ["toggle-dictation", ["voxtype", "record", "toggle"]],
   ["cancel-dictation", ["voxtype", "record", "cancel"]],
@@ -338,7 +336,7 @@ const MeetingOsd = GObject.registerClass(
 export default class VoxtypeOsdExtension extends Extension {
   enable() {
     this._generation = (this._generation ?? 0) + 1;
-    this._settings = this._createSettings();
+    this._settings = this.getSettings();
     this._socketPath = GLib.build_filenamev([
       GLib.getenv("XDG_RUNTIME_DIR") ?? "/tmp",
       "voxtype",
@@ -355,7 +353,6 @@ export default class VoxtypeOsdExtension extends Extension {
       "meeting_state",
     ]);
 
-    this._destroyed = false;
     this._stream = null;
     this._readBuffer = new Uint8Array(FRAME_BYTES);
     this._readOffset = 0;
@@ -375,9 +372,24 @@ export default class VoxtypeOsdExtension extends Extension {
     Main.layoutManager.addTopChrome(this._meetingOsd, { affectsStruts: false });
     this._positionMeetingOsd();
 
+    this._osdVisibleId = this._osd.connect("notify::visible", () => {
+      if (this._osd.visible) this._positionOsd();
+    });
+    this._meetingOsdVisibleId = this._meetingOsd.connect("notify::visible", () => {
+      if (this._meetingOsd.visible) this._positionMeetingOsd();
+    });
+    this._monitorSettingId = this._settings.connect("changed::monitor", () => {
+      this._positionOsd();
+      this._positionMeetingOsd();
+    });
+    this._monitorsChangedId = Main.layoutManager.connect("monitors-changed", () => {
+      this._positionOsd();
+      this._positionMeetingOsd();
+    });
+
     const generation = this._generation;
     this._idleSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
-      if (this._destroyed || generation !== this._generation) {
+      if (generation !== this._generation) {
         return GLib.SOURCE_REMOVE;
       }
 
@@ -397,7 +409,6 @@ export default class VoxtypeOsdExtension extends Extension {
   }
 
   disable() {
-    this._destroyed = true;
     this._generation = (this._generation ?? 0) + 1;
 
     if (this._connectSource) {
@@ -432,6 +443,14 @@ export default class VoxtypeOsdExtension extends Extension {
       this._meetingStateMonitor.cancel();
       this._meetingStateMonitor = null;
     }
+    if (this._monitorsChangedId) {
+      Main.layoutManager.disconnect(this._monitorsChangedId);
+      this._monitorsChangedId = 0;
+    }
+    if (this._monitorSettingId) {
+      this._settings.disconnect(this._monitorSettingId);
+      this._monitorSettingId = 0;
+    }
     this._removeKeybindings();
     if (this._stream) {
       try {
@@ -440,18 +459,36 @@ export default class VoxtypeOsdExtension extends Extension {
       this._stream = null;
     }
     if (this._osd) {
+      if (this._osdVisibleId) {
+        this._osd.disconnect(this._osdVisibleId);
+        this._osdVisibleId = 0;
+      }
       this._osd.destroy();
       this._osd = null;
     }
     if (this._meetingOsd) {
+      if (this._meetingOsdVisibleId) {
+        this._meetingOsd.disconnect(this._meetingOsdVisibleId);
+        this._meetingOsdVisibleId = 0;
+      }
       this._meetingOsd.destroy();
       this._meetingOsd = null;
     }
     this._settings = null;
   }
 
+  _getTargetMonitor() {
+    const mode = this._settings?.get_string("monitor") ?? "primary";
+    if (mode === "active") {
+      const index = global.display.get_current_monitor();
+      const monitors = Main.layoutManager.monitors;
+      if (index >= 0 && index < monitors.length) return monitors[index];
+    }
+    return Main.layoutManager.primaryMonitor;
+  }
+
   _positionOsd() {
-    const monitor = Main.layoutManager.primaryMonitor;
+    const monitor = this._getTargetMonitor();
     const width = 336;
     const height = 76;
     const x = monitor.x + Math.floor((monitor.width - width) / 2);
@@ -462,7 +499,7 @@ export default class VoxtypeOsdExtension extends Extension {
   }
 
   _positionMeetingOsd() {
-    const monitor = Main.layoutManager.primaryMonitor;
+    const monitor = this._getTargetMonitor();
     const width = 336;
     const height = 44;
     const x = monitor.x + Math.floor((monitor.width - width) / 2);
@@ -473,14 +510,12 @@ export default class VoxtypeOsdExtension extends Extension {
   }
 
   _connect() {
-    if (this._destroyed) return;
-
     const generation = this._generation;
     const address = Gio.UnixSocketAddress.new(this._socketPath);
     const client = new Gio.SocketClient();
 
     client.connect_async(address, null, (source, result) => {
-      if (this._destroyed || generation !== this._generation) return;
+      if (generation !== this._generation) return;
 
       try {
         const connection = source.connect_finish(result);
@@ -499,7 +534,7 @@ export default class VoxtypeOsdExtension extends Extension {
   }
 
   _scheduleReconnect() {
-    if (this._destroyed || this._connectSource) return;
+    if (this._connectSource) return;
 
     const generation = this._generation;
     this._connectSource = GLib.timeout_add(
@@ -507,7 +542,7 @@ export default class VoxtypeOsdExtension extends Extension {
       RECONNECT_MS,
       () => {
         this._connectSource = 0;
-        if (this._destroyed || generation !== this._generation) {
+        if (generation !== this._generation) {
           return GLib.SOURCE_REMOVE;
         }
         this._connect();
@@ -517,7 +552,7 @@ export default class VoxtypeOsdExtension extends Extension {
   }
 
   _readNextChunk() {
-    if (this._destroyed || !this._stream) return;
+    if (!this._stream) return;
 
     const generation = this._generation;
     const remaining = FRAME_BYTES - this._readOffset;
@@ -526,7 +561,7 @@ export default class VoxtypeOsdExtension extends Extension {
       GLib.PRIORITY_DEFAULT,
       null,
       (source, result) => {
-        if (this._destroyed || generation !== this._generation) return;
+        if (generation !== this._generation) return;
 
         let bytes;
         try {
@@ -557,8 +592,6 @@ export default class VoxtypeOsdExtension extends Extension {
   }
 
   _disconnectAndReconnect() {
-    if (this._destroyed) return;
-
     if (this._stream) {
       try {
         this._stream.close(null);
@@ -631,19 +664,6 @@ export default class VoxtypeOsdExtension extends Extension {
     return DEFAULT_MAX_DURATION_SECS;
   }
 
-  _createSettings() {
-    const schemaDir = this.dir.get_child("schemas").get_path();
-    const schemaSource = Gio.SettingsSchemaSource.new_from_directory(
-      schemaDir,
-      Gio.SettingsSchemaSource.get_default(),
-      false,
-    );
-    const schema = schemaSource.lookup(SETTINGS_SCHEMA, false);
-    if (!schema) throw new Error(`Schema ${SETTINGS_SCHEMA} not found`);
-
-    return new Gio.Settings({ settings_schema: schema });
-  }
-
   _addKeybindings() {
     for (const [name, command] of KEYBINDINGS) {
       Main.wm.addKeybinding(
@@ -709,12 +729,12 @@ export default class VoxtypeOsdExtension extends Extension {
   }
 
   _debounceStateRefresh() {
-    if (this._destroyed || this._stateSource) return;
+    if (this._stateSource) return;
 
     const generation = this._generation;
     this._stateSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
       this._stateSource = 0;
-      if (!this._destroyed && generation === this._generation) this._refreshState();
+      if (generation === this._generation) this._refreshState();
       return GLib.SOURCE_REMOVE;
     });
   }
@@ -742,12 +762,12 @@ export default class VoxtypeOsdExtension extends Extension {
   }
 
   _debounceMeetingStateRefresh() {
-    if (this._destroyed || this._meetingStateSource) return;
+    if (this._meetingStateSource) return;
 
     const generation = this._generation;
     this._meetingStateSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 100, () => {
       this._meetingStateSource = 0;
-      if (!this._destroyed && generation === this._generation) this._refreshMeetingState();
+      if (generation === this._generation) this._refreshMeetingState();
       return GLib.SOURCE_REMOVE;
     });
   }
@@ -780,7 +800,7 @@ export default class VoxtypeOsdExtension extends Extension {
     const generation = this._generation;
     try {
       file.load_contents_async(null, (source, result) => {
-        if (this._destroyed || generation !== this._generation) return;
+        if (generation !== this._generation) return;
 
         try {
           const [ok, contents] = source.load_contents_finish(result);
